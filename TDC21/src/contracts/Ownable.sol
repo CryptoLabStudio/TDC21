@@ -6,18 +6,13 @@ import '../interfaces/ERC173.sol';
 contract Ownable is ERC173 {
 
     address contractOwner;
-    
-    function owner() external view override returns(address) {
-        return contractOwner;
-    }
 
     constructor() {
         contractOwner = msg.sender;
     }
-
-    modifier onlyOwner(){
-        require(contractOwner == msg.sender);
-        _;
+    
+    function owner() external view override returns(address) {
+        return contractOwner;
     }
 
     function transferOwnership(address _newOwner) external override onlyOwner {
@@ -25,5 +20,10 @@ contract Ownable is ERC173 {
         address prevOwner = contractOwner;
         contractOwner = _newOwner;
         emit OwnershipTransferred(prevOwner, contractOwner);
+    }
+
+    modifier onlyOwner(){
+        require(contractOwner == msg.sender);
+        _;
     }
 }

@@ -1,15 +1,12 @@
 require('chai').use(require('chai-as-promised')).should()
 
-const { Emitted } = require('./helpers/events')
-const { weiBalance } = require('./helpers/balance')
-const { deadAddress } = require('./utils/constants')
-const { assert } = require('chai')
-
 const Collections = artifacts.require("Collections")
 
-const CREATE_CONTRACT_COST = 100
+const { Emitted } = require('./helpers/events')
+const { weiBalance } = require('./helpers/balance')
+const { DEAD_ADDRESS, ERROR_MESSAGE, CREATE_CONTRACT_COST } = require('./utils/constants')
 
-const errorMessage = 'VM Exception while processing transaction: revert'
+
 
 contract('Collections', (accounts) => {
 
@@ -26,25 +23,14 @@ contract('Collections', (accounts) => {
             assert.notEqual(instance.address, undefined)
             assert.notEqual(instance.address, null)
             assert.equal(await weiBalance(instance.address), CREATE_CONTRACT_COST)
+            assert.equal(await instance.name(), 'TDC21 Collections')
+            assert.equal(await instance.symbol(), 'TDC21C')
         })
     })
 
-    describe('ERC721Metadata', () => {
-        it('check name and symbol', async () => {
-            assert.equal(await instance.symbol(), "TDC21C")
-            assert.equal(await instance.name(), "TDC21 Collections")
-        });
-    })
-
-    describe('balanceOf', () => {
-        it('initial balance is 1', async () => {
-            assert.equal(await instance.balanceOf(accounts[0]), 1)
-        })
-    })
-
-    describe('create collection', () => {
+    describe('createCollection', () => {
         it('error when no dinero amigo', async () => {
-            await instance.createCollection("anUri").should.be.rejectedWith(errorMessage)
+            await instance.createCollection("anUri").should.be.rejectedWith(ERROR_MESSAGE)
         });
 
         it('collection created', async () => {
@@ -65,24 +51,59 @@ contract('Collections', (accounts) => {
         })
     })
 
+    describe('collectionsOf', () => {
+        it('Should return empty if address doesnt have any collection', async () => {
+            const result = await instance.collectionsOf.call(accounts[8]);
+            assert.isOk(Array.isArray(result));
+            assert.equal(result.length, 0);
+        })
+
+        it('Should return array of collections if address have collections', async () => {
+            await instance.createCollection('collection2', { value: CREATE_CONTRACT_COST });
+            const result = await instance.collectionsOf.call(accounts[0]);
+            assert.isOk(Array.isArray(result));
+            assert.equal(result.length, 2);
+            result.forEach((r, i) => {
+                assert.equal(r.id, i);
+                assert.equal(r.owner, accounts[0]);
+                assert.equal(r.uri, ['anUri', 'collection2'][i]);
+            });
+        })
+    })
+
+    describe('balanceOf', () => {
+        it('initial balance is 1', async () => {
+            const result = await instance.balanceOf(accounts[0])
+            assert.equal(result, 1)
+        })
+
+        it('updates balance when new collection is created', async () => {
+            let result = await instance.balanceOf(accounts[0])
+            assert.equal(result, 1)
+            await instance.createCollection("anUri2", { value: CREATE_CONTRACT_COST })
+            result = await instance.balanceOf(accounts[0])
+            assert.equal(result, 2)
+        })
+    })
+
     describe('cost', () => {
         it('cant update cost if not owner', async () => {
             assert.equal(await instance.price(), CREATE_CONTRACT_COST)
-            await instance.updatePrice(200, { from: accounts[4] }).should.be.rejectedWith(errorMessage);
+            await instance.updatePrice(200, { from: accounts[4] }).should.be.rejectedWith(ERROR_MESSAGE);
             assert.equal(await instance.price(), CREATE_CONTRACT_COST)
         })
 
         it('cost is updated', async () => {
+            const NEW_PRICE = 200
             assert.equal(await instance.price(), CREATE_CONTRACT_COST)
-            const result = await instance.updatePrice(200, { from: accounts[0] });
-            assert.equal(await instance.price(), 200)
+            const result = await instance.updatePrice(NEW_PRICE, { from: accounts[0] })
+            assert.equal(await instance.price(), NEW_PRICE)
         
             Emitted(result, 'PriceUpdated', {
-                newPrice: 200,
+                newPrice: NEW_PRICE,
             }, 'Contract should return the correct event.');
 
-            await instance.createCollection("anUri", { value: CREATE_CONTRACT_COST }).should.be.rejectedWith(errorMessage)
-            await instance.updatePrice(CREATE_CONTRACT_COST, { from: accounts[0] });
+            await instance.createCollection("anUri", { value: CREATE_CONTRACT_COST }).should.be.rejectedWith(ERROR_MESSAGE)
         })
     });
 
@@ -92,11 +113,11 @@ contract('Collections', (accounts) => {
         })
 
         it('Should throw if NFT doesnt exist', async () => {
-            await instance.getApproved(7438).should.be.rejectedWith(errorMessage);
+            await instance.getApproved(7438).should.be.rejectedWith(ERROR_MESSAGE);
         })
 
         it('Should throw if sender is not owner or approved', async () => {
-            await instance.approve(accounts[1], 0, { from: accounts[7] }).should.be.rejectedWith(errorMessage)
+            await instance.approve(accounts[1], 0, { from: accounts[7] }).should.be.rejectedWith(ERROR_MESSAGE)
         })
 
         it('Approve collection as owner and getApproved', async () => {
@@ -124,7 +145,7 @@ contract('Collections', (accounts) => {
         })
 
         it('Approved that approves losses approval', async () => {
-            await instance.approve(accounts[2], 0, {from: accounts[1]}).should.be.rejectedWith(errorMessage)
+            await instance.approve(accounts[2], 0, {from: accounts[1]}).should.be.rejectedWith(ERROR_MESSAGE)
         })
 
         it('Owner that approved can change approved wallet', async () => {
@@ -170,16 +191,16 @@ contract('Collections', (accounts) => {
             describe('test is not owner, approved or operator', () => {
 
                 it('test not owner, approved nor operator', async () => {
-                    await instance.safeTransferFrom(accounts[0], accounts[3], 0, {from: accounts[1]}).should.be.rejectedWith(errorMessage)
+                    await instance.safeTransferFrom(accounts[0], accounts[3], 0, {from: accounts[1]}).should.be.rejectedWith(ERROR_MESSAGE)
                 })
                 it('_to 0 should be rejected', async () => {
-                    await instance.safeTransferFrom(accounts[0], deadAddress, 0).should.be.rejectedWith(errorMessage)
+                    await instance.safeTransferFrom(accounts[0], DEAD_ADDRESS, 0).should.be.rejectedWith(ERROR_MESSAGE)
                 })
                 it('nft doesnt exist', async () => {
-                    await instance.safeTransferFrom(accounts[0], accounts[3], 5).should.be.rejectedWith(errorMessage);
+                    await instance.safeTransferFrom(accounts[0], accounts[3], 5).should.be.rejectedWith(ERROR_MESSAGE);
                 })
                 it('should reject when _from is not owner', async () => {
-                    await instance.safeTransferFrom(accounts[1], accounts[7], 0).should.be.rejectedWith(errorMessage)
+                    await instance.safeTransferFrom(accounts[1], accounts[7], 0).should.be.rejectedWith(ERROR_MESSAGE)
                 })
             })
 
@@ -214,14 +235,14 @@ contract('Collections', (accounts) => {
             describe('test is not owner, approved or operator', () => {
 
                 it('test not owner, approved nor operator', async () => {
-                    await instance.safeTransferFrom(accounts[0], accounts[3], 0, {from: accounts[1]}).should.be.rejectedWith(errorMessage)
+                    await instance.safeTransferFrom(accounts[0], accounts[3], 0, {from: accounts[1]}).should.be.rejectedWith(ERROR_MESSAGE)
                 })
 
                 it('nft doesnt exist', async () => {
-                    await instance.safeTransferFrom(accounts[0], accounts[3], 5).should.be.rejectedWith(errorMessage);
+                    await instance.safeTransferFrom(accounts[0], accounts[3], 5).should.be.rejectedWith(ERROR_MESSAGE);
                 })
                 it('should reject when _from is not owner', async () => {
-                    await instance.safeTransferFrom(accounts[1], accounts[7], 0).should.be.rejectedWith(errorMessage)
+                    await instance.safeTransferFrom(accounts[1], accounts[7], 0).should.be.rejectedWith(ERROR_MESSAGE)
                 })
             })
 
@@ -245,9 +266,10 @@ contract('Collections', (accounts) => {
                 
                 it('burn', async () => {
                     assert.equal(await instance.balanceOf(accounts[0]), 1)
-                    assert.equal(await instance.balanceOf(deadAddress), 0)
+                    assert.equal(await instance.balanceOf(DEAD_ADDRESS), 0)
 
-                    const result = await instance.transferFrom(accounts[0], deadAddress, 0);
+                    const result = await instance.transferFrom(accounts[0], DEAD_ADDRESS, 0);
+                    assert.typeOf(await instance.ownerOf(0), 'string')
                     assert.equal(await instance.ownerOf(0), 0)
 
                     assert.equal(await instance.balanceOf(accounts[0]), 0)
@@ -265,7 +287,7 @@ contract('Collections', (accounts) => {
     describe('Withdraw', () => {
         it('Should not withdraw if sender is not owner', async () => {
             const balance = await weiBalance(instance.address)
-            await instance.withdraw({from: accounts[1]}).should.be.rejectedWith(errorMessage)
+            await instance.withdraw({from: accounts[1]}).should.be.rejectedWith(ERROR_MESSAGE)
             assert.equal(await weiBalance(instance.address), balance)
         })
 
@@ -278,26 +300,11 @@ contract('Collections', (accounts) => {
         })
     })
 
-    describe('collectionsOf', () => {
-        it('Should return empty if address doesnt have any collection', async () => {
-            const result = await instance.collectionsOf.call(accounts[8]);
-            assert.isOk(Array.isArray(result));
-            assert.equal(result.length, 0);
-        })
-
-        it('Should return array of collections if address have collections', async () => {
-            await instance.createCollection('collection2', { value: CREATE_CONTRACT_COST });
-            const result = await instance.collectionsOf.call(accounts[0]);
-            assert.isOk(Array.isArray(result));
-            assert.equal(result.length, 2);
-            result.forEach((r, i) => {
-                assert.equal(r.id, i);
-                assert.equal(r.owner, accounts[0]);
-                assert.equal(r.uri, ['anUri', 'collection2'][i]);
-            });
-        })
+    describe('ERC721Metadata', () => {
+        it('check name and symbol', async () => {
+            assert.equal(await instance.symbol(), "TDC21C")
+            assert.equal(await instance.name(), "TDC21 Collections")
+        });
     })
-
-
 })
 

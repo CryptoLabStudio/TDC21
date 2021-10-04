@@ -12,10 +12,6 @@ contract Collections is Ownable, Priced, ERC721Metadata, ERC721 {
 
     mapping (address => uint256) public balances;
 
-    function balanceOf(address _address) external override view returns(uint256){
-        return balances[_address];
-    }
-
     struct Collection{
         uint256 id;
         address owner;
@@ -23,19 +19,6 @@ contract Collections is Ownable, Priced, ERC721Metadata, ERC721 {
     }
 
     Collection[] collections;
-    
-    function collectionsOf(address _address) external view returns(Collection[] memory) {
-        Collection[] memory _collections = new Collection[](balances[_address]);
-        uint256 count;
-        for(uint256 i = 0; i < collections.length; i++) {
-            if (collections[i].owner == _address) {
-               _collections[count] = collections[i];
-               count++;
-            }
-        }
-        
-        return _collections;
-    }
 
     constructor() {
         price = 100 wei;
@@ -50,15 +33,31 @@ contract Collections is Ownable, Priced, ERC721Metadata, ERC721 {
         collection.uri = _uri;
         collections.push(collection);
         balances[msg.sender]++;
-        emit CollectionCreated(collections.length -1, msg.sender);
+        emit CollectionCreated(collections.length - 1, msg.sender);
+    }
+    
+    function collectionsOf(address _address) external view returns(Collection[] memory) {
+        Collection[] memory _collections = new Collection[](balances[_address]);
+        uint256 count;
+        for(uint256 i = 0; i < collections.length; i++) {
+            if (collections[i].owner == _address) {
+               _collections[count] = collections[i];
+               count++;
+            }
+        }
+        
+        return _collections;
     }
 
-    function ownerOf(uint256 _tokenId) external view override returns (address) {
+     function balanceOf(address _address) external override view returns(uint256){
+        return balances[_address];
+    }
+
+    function ownerOf(uint256 _tokenId) external view override returns(address) {
         return collections[_tokenId].owner;
     }
 
     // APPROVAL SECTION
-
     // owner => operator list
     mapping (address => mapping(address => bool)) approvedOperators;
     mapping (uint256 => address) approved;
